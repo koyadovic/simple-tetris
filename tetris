@@ -12,70 +12,60 @@ from datetime import datetime, timedelta
 
 standard_screen = curses.initscr()
 
+WIDTH = 10
+HEIGHT = 20
+SCREEN = [[0 for _ in range(WIDTH)] for _ in range(HEIGHT)]
+INITIAL_COORDS = (WIDTH // 2 - 2, 0)
 
-SCREEN = [
-    [0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-    [0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-    [0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-    [0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-    [0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-    [0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-    [0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-    [0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-    [0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-    [0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-    [0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-    [0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-    [0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-    [0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-    [0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-    [0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-    [0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-    [0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-    [0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-    [0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-]
 
-I = [
+SHAPE_I = [
     [0, 0, 0, 0],
     [1, 1, 1, 1],
     [0, 0, 0, 0],
 ]
 
-T = [
+SHAPE_T = [
     [0, 0, 0],
     [1, 1, 1],
     [0, 1, 0],
 ]
 
-Z = [
+SHAPE_Z = [
     [1, 1, 0],
     [0, 1, 1],
 ]
 
-S = [
+SHAPE_S = [
     [0, 1, 1],
     [1, 1, 0],
 ]
 
-O = [
+SHAPE_O = [
     [1, 1],
     [1, 1],
 ]
 
-J = [
+SHAPE_J = [
     [1, 1, 1],
     [0, 0, 1],
 ]
 
-L = [
+SHAPE_L = [
     [1, 1, 1],
     [1, 0, 0],
 ]
 
+SHAPES = [SHAPE_I, SHAPE_T, SHAPE_Z, SHAPE_S, SHAPE_O, SHAPE_J, SHAPE_L]
+
 LINES = 0
-SHAPES = [I, T, Z, S, O, J, L]
-INITIAL_COORDS = (3, 0)
+
+SCREEN_PAIR_COLORS = 1
+CURRENT_SHAPE_PAIR_COLORS = 2
+NEXT_SHAPE_PAIR_COLORS = 3
+SCREEN_COLOR = None
+SHAPE_COLOR = None
+NEXT_SHAPE_COLOR = None
+
 FALL_EVERY_TIME = timedelta(microseconds=500000)
 
 
@@ -182,16 +172,6 @@ def can_continue_shape_fall(shape, shape_x, shape_y, screen) -> bool:
     return True
 
 
-
-SCREEN_PAIR_COLORS = 1
-CURRENT_SHAPE_PAIR_COLORS = 2
-NEXT_SHAPE_PAIR_COLORS = 3
-
-SCREEN_COLOR = None
-SHAPE_COLOR = None
-NEXT_SHAPE_COLOR = None
-
-
 def draw_virtual_screen(virtual_screen, shape, shape_x, shape_y, next_shape):
     global standard_screen
     global LINES
@@ -256,6 +236,7 @@ def setup_curses():
         SCREEN_COLOR = curses.color_pair(SCREEN_PAIR_COLORS)
         SHAPE_COLOR = curses.color_pair(CURRENT_SHAPE_PAIR_COLORS)
         NEXT_SHAPE_COLOR = curses.color_pair(NEXT_SHAPE_PAIR_COLORS)
+
 
 def restore_terminal_config():
     global standard_screen
