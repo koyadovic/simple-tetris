@@ -1,3 +1,5 @@
+#!/usr/bin/env python3
+
 import copy
 import random
 import sys
@@ -159,6 +161,12 @@ class Keyboard:
     def is_action_pressed(self) -> bool:
         return self.key == curses.KEY_UP
 
+    def is_exit_pressed(self) -> bool:
+        if self.key == 27:
+            if self.ss.getch() == -1:
+                return True
+        return False
+
 
 def copy_shape_to_screen(shape, shape_x, shape_y, screen):
     for y in range(len(shape)):
@@ -282,6 +290,11 @@ def main(screen):
     shape_x, shape_y = INITIAL_COORDS
     while True:
         keyboard.read_ch()
+
+        if keyboard.is_exit_pressed():
+            restore_terminal_config()
+            show_lines()
+            sys.exit(0)
 
         if keyboard.is_action_pressed():
             rotated_shape = rotate_shape(shape)
