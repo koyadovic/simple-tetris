@@ -7,32 +7,8 @@ import signal
 
 from datetime import datetime, timedelta
 
+
 standard_screen = curses.initscr()
-
-
-def setup_curses():
-    global standard_screen
-    standard_screen = curses.initscr()
-    curses.noecho()
-    curses.cbreak()
-    standard_screen.keypad(True)
-    standard_screen.nodelay(True)
-    curses.curs_set(0)
-
-
-def restore_terminal_config():
-    global standard_screen
-    curses.nocbreak()
-    standard_screen.keypad(False)
-    curses.echo()
-    curses.curs_set(1)
-    curses.endwin()
-
-
-def interrupt_handler(sig, frame):
-    restore_terminal_config()
-    show_lines()
-    sys.exit(0)
 
 
 SCREEN = [
@@ -147,17 +123,16 @@ def get_right_coords_for_collision(shape):
 def remove_filled_rows(screen):
     global LINES
     global FALL_EVERY_TIME
+    removed_lines = 0
     new_screen = []
     for y, row in enumerate(screen):
         if all([col for col in row]):
-            LINES += 1
-            if FALL_EVERY_TIME > timedelta(microseconds=80000):
-                FALL_EVERY_TIME = timedelta(microseconds=FALL_EVERY_TIME.microseconds * 0.95)
-
+            removed_lines += 1
             new_screen = [[0] * len(screen[0])] + new_screen
         else:
             new_screen.append(row)
-    return new_screen
+    LINES += removed_lines
+    return new_screen, removed_lines
 
 
 class Keyboard:
@@ -182,7 +157,7 @@ class Keyboard:
         return self.key == curses.KEY_DOWN
 
     def is_action_pressed(self) -> bool:
-        return self.key == ord(' ')
+        return self.key == curses.KEY_UP
 
 
 def copy_shape_to_screen(shape, shape_x, shape_y, screen):
@@ -199,7 +174,17 @@ def can_continue_shape_fall(shape, shape_x, shape_y, screen) -> bool:
     return True
 
 
-def draw_virtual_screen(virtual_screen, next_shape):
+
+SCREEN_PAIR_COLORS = 1
+CURRENT_SHAPE_PAIR_COLORS = 2
+NEXT_SHAPE_PAIR_COLORS = 3
+
+SCREEN_COLOR = None
+SHAPE_COLOR = None
+NEXT_SHAPE_COLOR = None
+
+
+def draw_virtual_screen(virtual_screen, shape, shape_x, shape_y, next_shape):
     global standard_screen
     global LINES
 
@@ -209,29 +194,74 @@ def draw_virtual_screen(virtual_screen, next_shape):
     margin_left = (cols // 2) - (width // 2)
     margin_top = 3
 
+    screen_color = [SCREEN_COLOR] if SCREEN_COLOR else []
+    shape_color = [SHAPE_COLOR] if SHAPE_COLOR else []
+    next_shape_color = [NEXT_SHAPE_COLOR] if NEXT_SHAPE_COLOR else []
+
+    # screen
     last_y = None
     for y, row in enumerate(virtual_screen):
         last_y = y
-        standard_screen.addch(y + margin_top, -1 + margin_left, '┃')
-        standard_screen.addch(y + margin_top, margin_left + width, '┃')
+        standard_screen.addch(y + margin_top, -1 + margin_left, '┃', *screen_color)
+        standard_screen.addch(y + margin_top, margin_left + width, '┃', *screen_color)
         for x, cell in enumerate(virtual_screen[y]):
-            standard_screen.addstr(y + margin_top, x * 2 + margin_left, '🮘🮘' if cell else '  ')
-    standard_screen.addstr(last_y + margin_top + 1, margin_left - 1, '┗' + ('━' * width) + '┛')
+            standard_screen.addstr(y + margin_top, x * 2 + margin_left, '🮘🮘' if cell else '  ', *screen_color)
+    standard_screen.addstr(last_y + margin_top + 1, margin_left - 1, '┗' + ('━' * width) + '┛', *screen_color)
 
-    standard_screen.addstr(margin_top, margin_left - 13, f' LINES {LINES}')
+    # current shape
+    for y, row in enumerate(shape):
+        for x, cell in enumerate(shape[y]):
+            if cell == 1:
+                standard_screen.addstr(y + shape_y + margin_top, (x + shape_x) * 2 + margin_left, '🮘🮘', *shape_color)
 
-    standard_screen.addstr(margin_top, width + margin_left + 5, 'NEXT')
+    standard_screen.addstr(margin_top, margin_left - 13, f' LINES {LINES}', *screen_color)
+
+    standard_screen.addstr(margin_top, width + margin_left + 5, 'NEXT', *screen_color)
     for y in range(4):
         for x in range(8):
             try:
                 cell = next_shape[y][x // 2]
-                standard_screen.addch(y + margin_top + 2, width + margin_left + 5 + x, '🮘' if cell else ' ')
+                standard_screen.addch(y + margin_top + 2, width + margin_left + 5 + x, '🮘' if cell else ' ', *next_shape_color)
             except IndexError:
-                standard_screen.addch(y + margin_top + 2, width + margin_left + 5 + x, ' ')
+                standard_screen.addch(y + margin_top + 2, width + margin_left + 5 + x, ' ', *next_shape_color)
 
 
 def show_lines():
     print(f'Lines {LINES}')
+
+
+def setup_curses():
+    global standard_screen
+    global SCREEN_COLOR
+    global SHAPE_COLOR
+    global NEXT_SHAPE_COLOR
+    curses.noecho()
+    curses.cbreak()
+    standard_screen.keypad(True)
+    standard_screen.nodelay(True)
+    curses.curs_set(0)
+    if curses.has_colors():
+        curses.start_color()
+        curses.init_pair(SCREEN_PAIR_COLORS, curses.COLOR_WHITE, curses.COLOR_BLACK)
+        curses.init_pair(CURRENT_SHAPE_PAIR_COLORS, curses.COLOR_RED, curses.COLOR_BLACK)
+        curses.init_pair(NEXT_SHAPE_PAIR_COLORS, curses.COLOR_CYAN, curses.COLOR_BLACK)
+        SCREEN_COLOR = curses.color_pair(SCREEN_PAIR_COLORS)
+        SHAPE_COLOR = curses.color_pair(CURRENT_SHAPE_PAIR_COLORS)
+        NEXT_SHAPE_COLOR = curses.color_pair(NEXT_SHAPE_PAIR_COLORS)
+
+def restore_terminal_config():
+    global standard_screen
+    curses.nocbreak()
+    standard_screen.keypad(False)
+    curses.echo()
+    curses.curs_set(1)
+    curses.endwin()
+
+
+def interrupt_handler(sig, frame):
+    restore_terminal_config()
+    show_lines()
+    sys.exit(0)
 
 
 def main(screen):
@@ -307,11 +337,12 @@ def main(screen):
                 shape = next_shape
                 next_shape = get_new_shape()
                 shape_x, shape_y = INITIAL_COORDS
-                screen = remove_filled_rows(screen)
+                screen, removed_lines = remove_filled_rows(screen)
+                if removed_lines > 0 and FALL_EVERY_TIME > timedelta(microseconds=80000):
+                    FALL_EVERY_TIME = timedelta(microseconds=FALL_EVERY_TIME.microseconds * 0.95)
 
         virtual_screen = copy.deepcopy(screen)
-        copy_shape_to_screen(shape, shape_x, shape_y, virtual_screen)
-        draw_virtual_screen(virtual_screen, next_shape)
+        draw_virtual_screen(virtual_screen, shape, shape_x, shape_y, next_shape)
         time.sleep(0.01)
 
 
