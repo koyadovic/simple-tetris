@@ -35,11 +35,6 @@ def interrupt_handler(sig, frame):
     sys.exit(0)
 
 
-def pprint(shape_2d):
-    for row in shape_2d:
-        print('[' + ', '.join([str(col) for col in row]) + ']')
-
-
 SCREEN = [
     [0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
     [0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
@@ -67,22 +62,22 @@ I = [
     [0, 0, 0, 0],
     [1, 1, 1, 1],
     [0, 0, 0, 0],
-    [0, 0, 0, 0],
 ]
+
 T = [
     [0, 0, 0],
     [1, 1, 1],
     [0, 1, 0],
 ]
+
 Z = [
     [1, 1, 0],
     [0, 1, 1],
-    [0, 0, 0],
 ]
+
 S = [
     [0, 1, 1],
     [1, 1, 0],
-    [0, 0, 0],
 ]
 
 O = [
@@ -93,18 +88,17 @@ O = [
 J = [
     [1, 1, 1],
     [0, 0, 1],
-    [0, 0, 0],
 ]
+
 L = [
     [1, 1, 1],
     [1, 0, 0],
-    [0, 0, 0],
 ]
 
 LINES = 0
 SHAPES = [I, T, Z, S, O, J, L]
 INITIAL_COORDS = (3, 0)
-FALL_EVERY_TIME = timedelta(seconds=0.5)
+FALL_EVERY_TIME = timedelta(microseconds=500000)
 
 
 def rotate_shape(shape):
@@ -112,8 +106,8 @@ def rotate_shape(shape):
 
 
 def get_new_shape():
-    new_share = copy.deepcopy(SHAPES[random.randint(0, len(SHAPES) - 1)])
-    return new_share
+    new_shape = copy.deepcopy(SHAPES[random.randint(0, len(SHAPES) - 1)])
+    return new_shape
 
 
 def get_bottom_coords_for_collision(shape):
@@ -157,8 +151,8 @@ def remove_filled_rows(screen):
     for y, row in enumerate(screen):
         if all([col for col in row]):
             LINES += 1
-            if FALL_EVERY_TIME > timedelta(seconds=0.1):
-                FALL_EVERY_TIME -= timedelta(seconds=0.045)
+            if FALL_EVERY_TIME > timedelta(microseconds=80000):
+                FALL_EVERY_TIME = timedelta(microseconds=FALL_EVERY_TIME.microseconds * 0.95)
 
             new_screen = [[0] * len(screen[0])] + new_screen
         else:
@@ -202,39 +196,30 @@ def can_continue_shape_fall(shape, shape_x, shape_y, screen) -> bool:
     for bottom_x, bottom_y in get_bottom_coords_for_collision(shape):
         if shape_y + bottom_y == len(screen) - 1 or screen[shape_y + bottom_y + 1][shape_x + bottom_x] == 1:
             return False
-    else:
-        return True
+    return True
 
 
-def draw_virtual_screen(virtual_screen, next_shape, LINES):
+def draw_virtual_screen(virtual_screen, next_shape):
     global standard_screen
+    global LINES
 
     rows, cols = standard_screen.getmaxyx()
 
-    expanded_x_virtual_screen = []
-    for row in virtual_screen:
-        expanded_row = []
-        for cell in row:
-            expanded_row.append(cell)
-            expanded_row.append(cell)
-        expanded_x_virtual_screen.append(expanded_row)
-
-    width = len(expanded_x_virtual_screen[0])
+    width = len(virtual_screen[0]) * 2
     margin_left = (cols // 2) - (width // 2)
     margin_top = 3
 
     last_y = None
-    for y, row in enumerate(expanded_x_virtual_screen):
+    for y, row in enumerate(virtual_screen):
         last_y = y
         standard_screen.addch(y + margin_top, -1 + margin_left, '┃')
         standard_screen.addch(y + margin_top, margin_left + width, '┃')
-        for x, cell in enumerate(expanded_x_virtual_screen[y]):
-            standard_screen.addch(y + margin_top, x + margin_left, '🮘' if cell else ' ')
+        for x, cell in enumerate(virtual_screen[y]):
+            standard_screen.addstr(y + margin_top, x * 2 + margin_left, '🮘🮘' if cell else '  ')
     standard_screen.addstr(last_y + margin_top + 1, margin_left - 1, '┗' + ('━' * width) + '┛')
-    # lines
+
     standard_screen.addstr(margin_top, margin_left - 13, f' LINES {LINES}')
 
-    # next shape
     standard_screen.addstr(margin_top, width + margin_left + 5, 'NEXT')
     for y in range(4):
         for x in range(8):
@@ -267,21 +252,28 @@ def main(screen):
     shape_x, shape_y = INITIAL_COORDS
     while True:
         keyboard.read_ch()
-        left_pressed = keyboard.is_left_pressed()
-        right_pressed = keyboard.is_right_pressed()
-        down_pressed = keyboard.is_down_pressed()
-        action_pressed = keyboard.is_action_pressed()
 
-        if action_pressed:
-            shape = rotate_shape(shape)
-            for x, y in get_left_coords_for_collision(shape):
-                while shape_x + x < 0:
-                    shape_x += 1
-            for x, y in get_right_coords_for_collision(shape):
-                while shape_x + x > max_x:
-                    shape_x -= 1
+        if keyboard.is_action_pressed():
+            rotated_shape = rotate_shape(shape)
+            rotated_shape_x, rotated_shape_y = shape_x, shape_y
+            for x, y in get_left_coords_for_collision(rotated_shape):
+                while rotated_shape_x + x < 0:
+                    rotated_shape_x += 1
+            for x, y in get_right_coords_for_collision(rotated_shape):
+                while rotated_shape_x + x > max_x:
+                    rotated_shape_x -= 1
+            for y, row in enumerate(rotated_shape):
+                for x, cell in enumerate(rotated_shape[y]):
+                    if screen[rotated_shape_y + y][rotated_shape_x + x] == 1:
+                        break
+                else:
+                    continue
+                break
+            else:
+                shape = rotated_shape
+                shape_x = rotated_shape_x
 
-        if left_pressed:
+        if keyboard.is_left_pressed():
             can_move_left = True
             for x, y in get_left_coords_for_collision(shape):
                 if shape_x + x == 0:
@@ -291,7 +283,7 @@ def main(screen):
             if can_move_left:
                 shape_x -= 1
 
-        elif right_pressed:
+        elif keyboard.is_right_pressed():
             can_move_right = True
             for x, y in get_right_coords_for_collision(shape):
                 if shape_x + x == max_x:
@@ -301,7 +293,7 @@ def main(screen):
             if can_move_right:
                 shape_x += 1
 
-        if down_pressed or datetime.now() - last_fall_movement > FALL_EVERY_TIME:
+        if keyboard.is_down_pressed() or datetime.now() - last_fall_movement > FALL_EVERY_TIME:
             last_fall_movement = datetime.now()
             if can_continue_shape_fall(shape, shape_x, shape_y, screen):
                 shape_y += 1
@@ -319,7 +311,7 @@ def main(screen):
 
         virtual_screen = copy.deepcopy(screen)
         copy_shape_to_screen(shape, shape_x, shape_y, virtual_screen)
-        draw_virtual_screen(virtual_screen, next_shape, LINES)
+        draw_virtual_screen(virtual_screen, next_shape)
         time.sleep(0.01)
 
 
