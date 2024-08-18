@@ -66,6 +66,7 @@ SHAPE_L = [
 ]
 
 SOLID = '█'
+SEMISOLID = '▓'
 
 SHAPES = [SHAPE_I, SHAPE_T, SHAPE_Z, SHAPE_S, SHAPE_O, SHAPE_J, SHAPE_L]
 
@@ -143,11 +144,17 @@ class Keyboard:
         self.ss = standard_screen
         self.key = None
 
-    def read_ch(self):
+    def refresh(self):
         try:
             self.key = self.ss.getch()
         except curses.error:
             self.key = None
+
+    def clear(self):
+        while True:
+            key = self.ss.getch()
+            if key == -1:
+                break
 
     def is_left_pressed(self) -> bool:
         return self.key == curses.KEY_LEFT
@@ -242,9 +249,9 @@ def draw_virtual_screen(virtual_screen, shape, shape_x, shape_y, next_shape):
         for _ in range(3):
             for color in COLORS:
                 for completed_y in completed_rows:
-                    standard_screen.addstr(completed_y + margin_top, 0 + margin_left, SOLID * width, *_get_color(color.value))
+                    standard_screen.addstr(completed_y + margin_top, 0 + margin_left, SEMISOLID * width, *_get_color(color.value))
                 standard_screen.refresh()
-                time.sleep(0.02)
+                time.sleep(0.01)
 
 
 def show_lines():
@@ -304,7 +311,7 @@ def main(screen):
 
     shape_x, shape_y = INITIAL_COORDS
     while True:
-        keyboard.read_ch()
+        keyboard.refresh()
 
         if keyboard.is_exit_pressed():
             restore_terminal_config()
@@ -351,6 +358,7 @@ def main(screen):
             if can_move_right:
                 shape_x += 1
 
+        floor_reached = False
         if keyboard.is_down_pressed() or datetime.now() - last_fall_movement > FALL_EVERY_TIME:
             last_fall_movement = datetime.now()
             if can_continue_shape_fall(shape, shape_x, shape_y, screen):
@@ -365,14 +373,19 @@ def main(screen):
                 shape = next_shape
                 next_shape = get_new_shape()
                 shape_x, shape_y = INITIAL_COORDS
+                floor_reached = True
 
         virtual_screen = copy.deepcopy(screen)
         draw_virtual_screen(virtual_screen, shape, shape_x, shape_y, next_shape)
         screen, removed_lines = remove_filled_rows(screen)
         if removed_lines > 0:
             last_fall_movement = datetime.now()
-            if FALL_EVERY_TIME > timedelta(microseconds=80000):
+            if FALL_EVERY_TIME >= timedelta(microseconds=60000):
                 FALL_EVERY_TIME = timedelta(microseconds=FALL_EVERY_TIME.microseconds * 0.95)
+            keyboard.clear()
+        elif floor_reached:
+            time.sleep(0.1)
+            keyboard.clear()
         time.sleep(0.01)
 
 
