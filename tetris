@@ -20,6 +20,7 @@ INITIAL_COORDS = (WIDTH // 2 - 2, 0)
 
 SOLID = '█'
 SEMISOLID = '▒'
+PAUSED = False
 
 
 class COLORS(Enum):
@@ -170,6 +171,9 @@ class Keyboard:
             if key == -1:
                 break
 
+    def is_pause_pressed(self) -> bool:
+        return self._key in [ord('p'), ord('P')]
+
     def is_left_pressed(self) -> bool:
         return self._key == curses.KEY_LEFT
 
@@ -179,10 +183,10 @@ class Keyboard:
     def is_down_pressed(self) -> bool:
         return self._key == curses.KEY_DOWN
 
-    def is_action_pressed(self) -> bool:
+    def is_up_pressed(self) -> bool:
         return self._key == curses.KEY_UP
 
-    def is_exit_pressed(self) -> bool:
+    def is_esc_pressed(self) -> bool:
         if self._key == 27:
             if self._screen.getch() == -1:
                 return True
@@ -232,6 +236,11 @@ def draw_virtual_screen(virtual_screen, shape, shape_x, shape_y, next_shape):
             completed_rows.append(y)
 
     try:
+        if PAUSED:
+            standard_screen.addstr(0, margin_left + (width // 2) - 3, 'PAUSED')
+        else:
+            standard_screen.addstr(0, margin_left + (width // 2) - 3, '      ')
+
         # screen
         last_y = None
         for y, row in enumerate(virtual_screen):
@@ -245,19 +254,16 @@ def draw_virtual_screen(virtual_screen, shape, shape_x, shape_y, next_shape):
                     SOLID * 2 if cell > 0 else '  ',
                     *get_color(cell)
                 )
-        standard_screen.addstr(
-            last_y + margin_top + 1,
-            margin_left - 1,
-            '┗' + ('━' * width) + '┛'
-        )
+
+        standard_screen.addstr(last_y + margin_top + 1, margin_left - 1, '┗' + ('━' * width) + '┛')
 
         # current shape
         for y, row in enumerate(shape):
             for x, cell in enumerate(shape[y]):
                 if cell > 0:
                     standard_screen.addstr(
-                        y + shape_y + margin_top,
-                        (x + shape_x) * 2 + margin_left,
+                        margin_top + y + shape_y,
+                        margin_left + (x + shape_x) * 2,
                         SOLID * 2,
                         *get_color(cell)
                     )
@@ -338,6 +344,7 @@ def rotate_shape_in_screen(screen, shape, shape_x, shape_y) -> Tuple:
 
 def main(screen):
     global FALL_EVERY_TIME
+    global PAUSED
 
     keyboard = Keyboard()
     shape = get_new_shape()
@@ -348,36 +355,40 @@ def main(screen):
     while True:
         keyboard.refresh()
 
-        if keyboard.is_exit_pressed():
+        if keyboard.is_esc_pressed():
             restore_terminal_config()
             show_lines()
             sys.exit(0)
 
-        if keyboard.is_action_pressed():
-            shape, shape_x, shape_y = rotate_shape_in_screen(screen, shape, shape_x, shape_y)
-
-        if keyboard.is_left_pressed() and can_shape_move_left_in_screen(screen, shape, shape_x, shape_y):
-            shape_x -= 1
-
-        elif keyboard.is_right_pressed() and can_shape_move_right_in_screen(screen, shape, shape_x, shape_y):
-            shape_x += 1
+        if keyboard.is_pause_pressed():
+            PAUSED = not PAUSED
 
         floor_reached = False
-        if keyboard.is_down_pressed() or datetime.now() - last_fall_movement > FALL_EVERY_TIME:
-            last_fall_movement = datetime.now()
-            if can_shape_continue_to_fall_in_screen(screen, shape, shape_x, shape_y):
-                shape_y += 1
-            else:
-                if shape_y == 0:
-                    restore_terminal_config()
-                    show_lines()
-                    sys.exit(0)
+        if not PAUSED:
+            if keyboard.is_up_pressed():
+                shape, shape_x, shape_y = rotate_shape_in_screen(screen, shape, shape_x, shape_y)
 
-                floor_reached = True
-                copy_shape_to_screen(shape, shape_x, shape_y, screen)
-                shape = next_shape
-                next_shape = get_new_shape()
-                shape_x, shape_y = INITIAL_COORDS
+            if keyboard.is_left_pressed() and can_shape_move_left_in_screen(screen, shape, shape_x, shape_y):
+                shape_x -= 1
+
+            elif keyboard.is_right_pressed() and can_shape_move_right_in_screen(screen, shape, shape_x, shape_y):
+                shape_x += 1
+
+            if keyboard.is_down_pressed() or datetime.now() - last_fall_movement > FALL_EVERY_TIME:
+                last_fall_movement = datetime.now()
+                if can_shape_continue_to_fall_in_screen(screen, shape, shape_x, shape_y):
+                    shape_y += 1
+                else:
+                    if shape_y == 0:
+                        restore_terminal_config()
+                        show_lines()
+                        sys.exit(0)
+
+                    floor_reached = True
+                    copy_shape_to_screen(shape, shape_x, shape_y, screen)
+                    shape = next_shape
+                    next_shape = get_new_shape()
+                    shape_x, shape_y = INITIAL_COORDS
 
         virtual_screen = copy.deepcopy(screen)
         draw_virtual_screen(virtual_screen, shape, shape_x, shape_y, next_shape)
