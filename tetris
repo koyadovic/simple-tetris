@@ -206,6 +206,11 @@ def draw_virtual_screen(virtual_screen, shape, shape_x, shape_y, next_shape):
     margin_left = (cols // 2) - (width // 2)
     margin_top = 3
 
+    completed_rows = []
+    for y, row in enumerate(virtual_screen):
+        if all([cell > 0 for cell in virtual_screen[y]]):
+            completed_rows.append(y)
+
     # screen
     last_y = None
     for y, row in enumerate(virtual_screen):
@@ -232,6 +237,14 @@ def draw_virtual_screen(virtual_screen, shape, shape_x, shape_y, next_shape):
                 standard_screen.addch(y + margin_top + 2, width + margin_left + 5 + x, SOLID if cell > 0 else ' ', *_get_color(cell))
             except IndexError:
                 standard_screen.addch(y + margin_top + 2, width + margin_left + 5 + x, ' ')
+
+    if len(completed_rows) > 0:
+        for _ in range(3):
+            for color in COLORS:
+                for completed_y in completed_rows:
+                    standard_screen.addstr(completed_y + margin_top, 0 + margin_left, SOLID * width, *_get_color(color.value))
+                standard_screen.refresh()
+                time.sleep(0.02)
 
 
 def show_lines():
@@ -352,12 +365,14 @@ def main(screen):
                 shape = next_shape
                 next_shape = get_new_shape()
                 shape_x, shape_y = INITIAL_COORDS
-                screen, removed_lines = remove_filled_rows(screen)
-                if removed_lines > 0 and FALL_EVERY_TIME > timedelta(microseconds=80000):
-                    FALL_EVERY_TIME = timedelta(microseconds=FALL_EVERY_TIME.microseconds * 0.95)
 
         virtual_screen = copy.deepcopy(screen)
         draw_virtual_screen(virtual_screen, shape, shape_x, shape_y, next_shape)
+        screen, removed_lines = remove_filled_rows(screen)
+        if removed_lines > 0:
+            last_fall_movement = datetime.now()
+            if FALL_EVERY_TIME > timedelta(microseconds=80000):
+                FALL_EVERY_TIME = timedelta(microseconds=FALL_EVERY_TIME.microseconds * 0.95)
         time.sleep(0.01)
 
 
