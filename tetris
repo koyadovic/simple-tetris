@@ -19,65 +19,79 @@ INITIAL_COORDS = (WIDTH // 2 - 2, 0)
 
 
 class COLORS(Enum):
-    S_COLOR = 2
-    Z_COLOR = 3
-    L_COLOR = 4
-    J_COLOR = 5
-    O_COLOR = 6
-    T_COLOR = 7
-    I_COLOR = 8
+    CYAN = 2
+    YELLOW = 3
+    MAGENTA = 4
+    BLUE = 5
+    GREEN = 6
+    RED = 7
 
 
 SHAPE_I = [
     [0, 0, 0, 0],
-    [8, 8, 8, 8],
+    [1, 1, 1, 1],
     [0, 0, 0, 0],
 ]
 
 SHAPE_T = [
     [0, 0, 0],
-    [7, 7, 7],
-    [0, 7, 0],
+    [1, 1, 1],
+    [0, 1, 0],
 ]
 
 SHAPE_Z = [
-    [3, 3, 0],
-    [0, 3, 3],
+    [1, 1, 0],
+    [0, 1, 1],
 ]
 
 SHAPE_S = [
-    [0, 2, 2],
-    [2, 2, 0],
+    [0, 1, 1],
+    [1, 1, 0],
 ]
 
 SHAPE_O = [
-    [6, 6],
-    [6, 6],
+    [1, 1],
+    [1, 1],
 ]
 
 SHAPE_J = [
-    [5, 5, 5],
-    [0, 0, 5],
+    [1, 1, 1],
+    [0, 0, 1],
 ]
 
 SHAPE_L = [
-    [4, 4, 4],
-    [4, 0, 0],
+    [1, 1, 1],
+    [1, 0, 0],
 ]
 
 SOLID = '█'
 SEMISOLID = '▓'
 
-SHAPES = [SHAPE_I, SHAPE_T, SHAPE_Z, SHAPE_S, SHAPE_O, SHAPE_J, SHAPE_L]
+
+def get_colorized_shape(shape, color: COLORS):
+    colorized_shape = copy.deepcopy(shape)
+    for y, row in enumerate(colorized_shape):
+        for x, cell in enumerate(colorized_shape[y]):
+            if cell == 1:
+                colorized_shape[y][x] = color.value
+    return colorized_shape
+
+
+SHAPES = [
+    get_colorized_shape(SHAPE_I, COLORS.RED),
+    get_colorized_shape(SHAPE_T, COLORS.GREEN),
+    get_colorized_shape(SHAPE_Z, COLORS.YELLOW),
+    get_colorized_shape(SHAPE_S, COLORS.CYAN),
+    get_colorized_shape(SHAPE_O, COLORS.BLUE),
+    get_colorized_shape(SHAPE_J, COLORS.YELLOW),
+    get_colorized_shape(SHAPE_L, COLORS.MAGENTA)
+]
 
 MAX_SHAPE_H = max([len(shape[0]) for shape in SHAPES])
 MAX_SHAPE_V = max([len(shape) for shape in SHAPES])
 
 SCREEN_ROWS, SCREEN_COLS = 0, 0
-
 LINES = 0
-
-
 FALL_EVERY_TIME = timedelta(microseconds=500000)
 
 
@@ -189,7 +203,7 @@ def can_continue_shape_fall(shape, shape_x, shape_y, screen) -> bool:
     return True
 
 
-def _get_color(color: int):
+def get_color(color: int):
     try:
         return [curses.color_pair(color)]
     except curses.error:
@@ -225,14 +239,14 @@ def draw_virtual_screen(virtual_screen, shape, shape_x, shape_y, next_shape):
         standard_screen.addch(y + margin_top, -1 + margin_left, '┃')
         standard_screen.addch(y + margin_top, margin_left + width, '┃')
         for x, cell in enumerate(virtual_screen[y]):
-            standard_screen.addstr(y + margin_top, x * 2 + margin_left, SOLID * 2 if cell > 0 else '  ', *_get_color(cell))
+            standard_screen.addstr(y + margin_top, x * 2 + margin_left, SOLID * 2 if cell > 0 else '  ', *get_color(cell))
     standard_screen.addstr(last_y + margin_top + 1, margin_left - 1, '┗' + ('━' * width) + '┛')
 
     # current shape
     for y, row in enumerate(shape):
         for x, cell in enumerate(shape[y]):
             if cell > 0:
-                standard_screen.addstr(y + shape_y + margin_top, (x + shape_x) * 2 + margin_left, SOLID * 2, *_get_color(cell))
+                standard_screen.addstr(y + shape_y + margin_top, (x + shape_x) * 2 + margin_left, SOLID * 2, *get_color(cell))
 
     standard_screen.addstr(margin_top, margin_left - 13, f' LINES {LINES}')
 
@@ -241,17 +255,17 @@ def draw_virtual_screen(virtual_screen, shape, shape_x, shape_y, next_shape):
         for x in range(MAX_SHAPE_H * 2):
             try:
                 cell = next_shape[y][x // 2]
-                standard_screen.addch(y + margin_top + 2, width + margin_left + 5 + x, SOLID if cell > 0 else ' ', *_get_color(cell))
+                standard_screen.addch(y + margin_top + 2, width + margin_left + 5 + x, SOLID if cell > 0 else ' ', *get_color(cell))
             except IndexError:
                 standard_screen.addch(y + margin_top + 2, width + margin_left + 5 + x, ' ')
 
+    # completed rows animation
     if len(completed_rows) > 0:
-        for _ in range(3):
-            for color in COLORS:
-                for completed_y in completed_rows:
-                    standard_screen.addstr(completed_y + margin_top, 0 + margin_left, SEMISOLID * width, *_get_color(color.value))
-                standard_screen.refresh()
-                time.sleep(0.01)
+        for color in COLORS:
+            for completed_y in completed_rows:
+                standard_screen.addstr(completed_y + margin_top, 0 + margin_left, SEMISOLID * width, *get_color(color.value))
+            standard_screen.refresh()
+            time.sleep(0.03)
 
 
 def show_lines():
@@ -271,13 +285,12 @@ def setup_curses():
 
     if curses.has_colors():
         curses.start_color()
-        curses.init_pair(COLORS.S_COLOR.value, curses.COLOR_CYAN, curses.COLOR_BLACK)
-        curses.init_pair(COLORS.Z_COLOR.value, curses.COLOR_YELLOW, curses.COLOR_BLACK)
-        curses.init_pair(COLORS.L_COLOR.value, curses.COLOR_MAGENTA, curses.COLOR_BLACK)
-        curses.init_pair(COLORS.J_COLOR.value, curses.COLOR_YELLOW, curses.COLOR_BLACK)
-        curses.init_pair(COLORS.O_COLOR.value, curses.COLOR_BLUE, curses.COLOR_BLACK)
-        curses.init_pair(COLORS.T_COLOR.value, curses.COLOR_GREEN, curses.COLOR_BLACK)
-        curses.init_pair(COLORS.I_COLOR.value, curses.COLOR_RED, curses.COLOR_BLACK)
+        curses.init_pair(COLORS.CYAN.value, curses.COLOR_CYAN, curses.COLOR_BLACK)
+        curses.init_pair(COLORS.YELLOW.value, curses.COLOR_YELLOW, curses.COLOR_BLACK)
+        curses.init_pair(COLORS.MAGENTA.value, curses.COLOR_MAGENTA, curses.COLOR_BLACK)
+        curses.init_pair(COLORS.BLUE.value, curses.COLOR_BLUE, curses.COLOR_BLACK)
+        curses.init_pair(COLORS.GREEN.value, curses.COLOR_GREEN, curses.COLOR_BLACK)
+        curses.init_pair(COLORS.RED.value, curses.COLOR_RED, curses.COLOR_BLACK)
 
 
 def restore_terminal_config():
@@ -378,14 +391,17 @@ def main(screen):
         virtual_screen = copy.deepcopy(screen)
         draw_virtual_screen(virtual_screen, shape, shape_x, shape_y, next_shape)
         screen, removed_lines = remove_filled_rows(screen)
+
         if removed_lines > 0:
             last_fall_movement = datetime.now()
             if FALL_EVERY_TIME >= timedelta(microseconds=60000):
                 FALL_EVERY_TIME = timedelta(microseconds=FALL_EVERY_TIME.microseconds * 0.95)
             keyboard.clear()
+
         elif floor_reached:
             time.sleep(0.1)
             keyboard.clear()
+
         time.sleep(0.01)
 
 
