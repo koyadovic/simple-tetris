@@ -17,6 +17,9 @@ HEIGHT = 20
 SCREEN = [[0 for _ in range(WIDTH)] for _ in range(HEIGHT)]
 INITIAL_COORDS = (WIDTH // 2 - 2, 0)
 
+SOLID = '█'
+SEMISOLID = '▒'
+
 
 class COLORS(Enum):
     CYAN = 2
@@ -63,9 +66,6 @@ SHAPE_L = [
     [1, 1, 1],
     [1, 0, 0],
 ]
-
-SOLID = '█'
-SEMISOLID = '▓'
 
 
 def get_colorized_shape(shape, color: COLORS):
@@ -232,40 +232,43 @@ def draw_virtual_screen(virtual_screen, shape, shape_x, shape_y, next_shape):
         if all([cell > 0 for cell in virtual_screen[y]]):
             completed_rows.append(y)
 
-    # screen
-    last_y = None
-    for y, row in enumerate(virtual_screen):
-        last_y = y
-        standard_screen.addch(y + margin_top, -1 + margin_left, '┃')
-        standard_screen.addch(y + margin_top, margin_left + width, '┃')
-        for x, cell in enumerate(virtual_screen[y]):
-            standard_screen.addstr(y + margin_top, x * 2 + margin_left, SOLID * 2 if cell > 0 else '  ', *get_color(cell))
-    standard_screen.addstr(last_y + margin_top + 1, margin_left - 1, '┗' + ('━' * width) + '┛')
+    try:
+        # screen
+        last_y = None
+        for y, row in enumerate(virtual_screen):
+            last_y = y
+            standard_screen.addch(y + margin_top, -1 + margin_left, '┃')
+            standard_screen.addch(y + margin_top, margin_left + width, '┃')
+            for x, cell in enumerate(virtual_screen[y]):
+                standard_screen.addstr(y + margin_top, x * 2 + margin_left, SOLID * 2 if cell > 0 else '  ', *get_color(cell))
+        standard_screen.addstr(last_y + margin_top + 1, margin_left - 1, '┗' + ('━' * width) + '┛')
 
-    # current shape
-    for y, row in enumerate(shape):
-        for x, cell in enumerate(shape[y]):
-            if cell > 0:
-                standard_screen.addstr(y + shape_y + margin_top, (x + shape_x) * 2 + margin_left, SOLID * 2, *get_color(cell))
+        # current shape
+        for y, row in enumerate(shape):
+            for x, cell in enumerate(shape[y]):
+                if cell > 0:
+                    standard_screen.addstr(y + shape_y + margin_top, (x + shape_x) * 2 + margin_left, SOLID * 2, *get_color(cell))
 
-    standard_screen.addstr(margin_top, margin_left - 13, f' LINES {LINES}')
+        standard_screen.addstr(margin_top, margin_left - 13, f' LINES {LINES}')
 
-    standard_screen.addstr(margin_top, width + margin_left + 5, 'NEXT')
-    for y in range(MAX_SHAPE_V):
-        for x in range(MAX_SHAPE_H * 2):
-            try:
-                cell = next_shape[y][x // 2]
-                standard_screen.addch(y + margin_top + 2, width + margin_left + 5 + x, SOLID if cell > 0 else ' ', *get_color(cell))
-            except IndexError:
-                standard_screen.addch(y + margin_top + 2, width + margin_left + 5 + x, ' ')
+        standard_screen.addstr(margin_top, width + margin_left + 5, 'NEXT')
+        for y in range(MAX_SHAPE_V):
+            for x in range(MAX_SHAPE_H * 2):
+                try:
+                    cell = next_shape[y][x // 2]
+                    standard_screen.addch(y + margin_top + 2, width + margin_left + 5 + x, SOLID if cell > 0 else ' ', *get_color(cell))
+                except IndexError:
+                    standard_screen.addch(y + margin_top + 2, width + margin_left + 5 + x, ' ')
 
-    # completed rows animation
-    if len(completed_rows) > 0:
-        for color in COLORS:
-            for completed_y in completed_rows:
-                standard_screen.addstr(completed_y + margin_top, 0 + margin_left, SEMISOLID * width, *get_color(color.value))
-            standard_screen.refresh()
-            time.sleep(0.03)
+        # completed rows animation
+        if len(completed_rows) > 0:
+            for color in COLORS:
+                for completed_y in completed_rows:
+                    standard_screen.addstr(completed_y + margin_top, 0 + margin_left, SEMISOLID * width, *get_color(color.value))
+                standard_screen.refresh()
+                time.sleep(0.03)
+    except curses.error:
+        standard_screen.addstr(0, 0, 'There is not enough space to draw')
 
 
 def show_lines():
@@ -382,24 +385,23 @@ def main(screen):
                     show_lines()
                     sys.exit(0)
 
+                floor_reached = True
                 copy_shape_to_screen(shape, shape_x, shape_y, screen)
                 shape = next_shape
                 next_shape = get_new_shape()
                 shape_x, shape_y = INITIAL_COORDS
-                floor_reached = True
 
         virtual_screen = copy.deepcopy(screen)
         draw_virtual_screen(virtual_screen, shape, shape_x, shape_y, next_shape)
         screen, removed_lines = remove_filled_rows(screen)
 
         if removed_lines > 0:
-            last_fall_movement = datetime.now()
             if FALL_EVERY_TIME >= timedelta(microseconds=60000):
                 FALL_EVERY_TIME = timedelta(microseconds=FALL_EVERY_TIME.microseconds * 0.95)
             keyboard.clear()
 
         elif floor_reached:
-            time.sleep(0.1)
+            time.sleep(0.05)
             keyboard.clear()
 
         time.sleep(0.01)
