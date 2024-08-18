@@ -8,7 +8,7 @@ import curses
 import signal
 
 from datetime import datetime, timedelta
-
+from enum import Enum
 
 standard_screen = curses.initscr()
 
@@ -18,53 +18,64 @@ SCREEN = [[0 for _ in range(WIDTH)] for _ in range(HEIGHT)]
 INITIAL_COORDS = (WIDTH // 2 - 2, 0)
 
 
+class COLORS(Enum):
+    S_COLOR = 2
+    Z_COLOR = 3
+    L_COLOR = 4
+    J_COLOR = 5
+    O_COLOR = 6
+    T_COLOR = 7
+    I_COLOR = 8
+
+
 SHAPE_I = [
     [0, 0, 0, 0],
-    [1, 1, 1, 1],
+    [8, 8, 8, 8],
     [0, 0, 0, 0],
 ]
 
 SHAPE_T = [
     [0, 0, 0],
-    [1, 1, 1],
-    [0, 1, 0],
+    [7, 7, 7],
+    [0, 7, 0],
 ]
 
 SHAPE_Z = [
-    [1, 1, 0],
-    [0, 1, 1],
+    [3, 3, 0],
+    [0, 3, 3],
 ]
 
 SHAPE_S = [
-    [0, 1, 1],
-    [1, 1, 0],
+    [0, 2, 2],
+    [2, 2, 0],
 ]
 
 SHAPE_O = [
-    [1, 1],
-    [1, 1],
+    [6, 6],
+    [6, 6],
 ]
 
 SHAPE_J = [
-    [1, 1, 1],
-    [0, 0, 1],
+    [5, 5, 5],
+    [0, 0, 5],
 ]
 
 SHAPE_L = [
-    [1, 1, 1],
-    [1, 0, 0],
+    [4, 4, 4],
+    [4, 0, 0],
 ]
+
+SOLID = '█'
 
 SHAPES = [SHAPE_I, SHAPE_T, SHAPE_Z, SHAPE_S, SHAPE_O, SHAPE_J, SHAPE_L]
 
+MAX_SHAPE_H = max([len(shape[0]) for shape in SHAPES])
+MAX_SHAPE_V = max([len(shape) for shape in SHAPES])
+
+SCREEN_ROWS, SCREEN_COLS = 0, 0
+
 LINES = 0
 
-SCREEN_PAIR_COLORS = 1
-CURRENT_SHAPE_PAIR_COLORS = 2
-NEXT_SHAPE_PAIR_COLORS = 3
-SCREEN_COLOR = None
-SHAPE_COLOR = None
-NEXT_SHAPE_COLOR = None
 
 FALL_EVERY_TIME = timedelta(microseconds=500000)
 
@@ -84,7 +95,7 @@ def get_bottom_coords_for_collision(shape):
         for x in range(len(shape[y])):
             if x in x_detected:
                 continue
-            if shape[y][x] == 1:
+            if shape[y][x] > 0:
                 x_detected.append(x)
                 yield x, y
 
@@ -94,8 +105,8 @@ def get_left_coords_for_collision(shape):
         y_found = False
         for x, cell in enumerate(shape[y]):
             if y_found:
-                continue
-            if cell == 1:
+                break
+            if cell > 0:
                 y_found = True
                 yield x, y
 
@@ -104,17 +115,16 @@ def get_right_coords_for_collision(shape):
     for y, cols in enumerate(shape):
         y_found = False
         for x in range(len(shape[y]) - 1, -1, -1):
-            cell = shape[y][x]
             if y_found:
-                continue
-            if cell == 1:
+                break
+            cell = shape[y][x]
+            if cell > 0:
                 y_found = True
                 yield x, y
 
 
 def remove_filled_rows(screen):
     global LINES
-    global FALL_EVERY_TIME
     removed_lines = 0
     new_screen = []
     for y, row in enumerate(screen):
@@ -161,57 +171,80 @@ class Keyboard:
 def copy_shape_to_screen(shape, shape_x, shape_y, screen):
     for y in range(len(shape)):
         for x in range(len(shape[y])):
-            if shape[y][x] == 1:
-                screen[y + shape_y][x + shape_x] = 1
+            if shape[y][x] > 0:
+                screen[y + shape_y][x + shape_x] = shape[y][x]
 
 
 def can_continue_shape_fall(shape, shape_x, shape_y, screen) -> bool:
     for bottom_x, bottom_y in get_bottom_coords_for_collision(shape):
-        if shape_y + bottom_y == len(screen) - 1 or screen[shape_y + bottom_y + 1][shape_x + bottom_x] == 1:
+        if shape_y + bottom_y == len(screen) - 1 or screen[shape_y + bottom_y + 1][shape_x + bottom_x] > 0:
             return False
     return True
 
 
+def _get_color(color: int):
+    try:
+        return [curses.color_pair(color)]
+    except curses.error:
+        return []
+
+
 def draw_virtual_screen(virtual_screen, shape, shape_x, shape_y, next_shape):
-    global standard_screen
     global LINES
+    global SCREEN_ROWS
+    global SCREEN_COLS
 
     rows, cols = standard_screen.getmaxyx()
+
+    if rows != SCREEN_ROWS or cols != SCREEN_COLS:
+        standard_screen.clear()
+
+    SCREEN_ROWS = rows
+    SCREEN_COLS = cols
 
     width = len(virtual_screen[0]) * 2
     margin_left = (cols // 2) - (width // 2)
     margin_top = 3
 
-    screen_color = [SCREEN_COLOR] if SCREEN_COLOR else []
-    shape_color = [SHAPE_COLOR] if SHAPE_COLOR else []
-    next_shape_color = [NEXT_SHAPE_COLOR] if NEXT_SHAPE_COLOR else []
+    completed_rows = []
+    for y, row in enumerate(virtual_screen):
+        if all([cell > 0 for cell in virtual_screen[y]]):
+            completed_rows.append(y)
 
     # screen
     last_y = None
     for y, row in enumerate(virtual_screen):
         last_y = y
-        standard_screen.addch(y + margin_top, -1 + margin_left, '┃', *screen_color)
-        standard_screen.addch(y + margin_top, margin_left + width, '┃', *screen_color)
+        standard_screen.addch(y + margin_top, -1 + margin_left, '┃')
+        standard_screen.addch(y + margin_top, margin_left + width, '┃')
         for x, cell in enumerate(virtual_screen[y]):
-            standard_screen.addstr(y + margin_top, x * 2 + margin_left, '🮘🮘' if cell else '  ', *screen_color)
-    standard_screen.addstr(last_y + margin_top + 1, margin_left - 1, '┗' + ('━' * width) + '┛', *screen_color)
+            standard_screen.addstr(y + margin_top, x * 2 + margin_left, SOLID * 2 if cell > 0 else '  ', *_get_color(cell))
+    standard_screen.addstr(last_y + margin_top + 1, margin_left - 1, '┗' + ('━' * width) + '┛')
 
     # current shape
     for y, row in enumerate(shape):
         for x, cell in enumerate(shape[y]):
-            if cell == 1:
-                standard_screen.addstr(y + shape_y + margin_top, (x + shape_x) * 2 + margin_left, '🮘🮘', *shape_color)
+            if cell > 0:
+                standard_screen.addstr(y + shape_y + margin_top, (x + shape_x) * 2 + margin_left, SOLID * 2, *_get_color(cell))
 
-    standard_screen.addstr(margin_top, margin_left - 13, f' LINES {LINES}', *screen_color)
+    standard_screen.addstr(margin_top, margin_left - 13, f' LINES {LINES}')
 
-    standard_screen.addstr(margin_top, width + margin_left + 5, 'NEXT', *screen_color)
-    for y in range(4):
-        for x in range(8):
+    standard_screen.addstr(margin_top, width + margin_left + 5, 'NEXT')
+    for y in range(MAX_SHAPE_V):
+        for x in range(MAX_SHAPE_H * 2):
             try:
                 cell = next_shape[y][x // 2]
-                standard_screen.addch(y + margin_top + 2, width + margin_left + 5 + x, '🮘' if cell else ' ', *next_shape_color)
+                standard_screen.addch(y + margin_top + 2, width + margin_left + 5 + x, SOLID if cell > 0 else ' ', *_get_color(cell))
             except IndexError:
-                standard_screen.addch(y + margin_top + 2, width + margin_left + 5 + x, ' ', *next_shape_color)
+                standard_screen.addch(y + margin_top + 2, width + margin_left + 5 + x, ' ')
+
+    if len(completed_rows) > 0:
+        for _ in range(3):
+            for color in COLORS:
+                for completed_y in completed_rows:
+                    standard_screen.addstr(completed_y + margin_top, 0 + margin_left, SOLID * width, *_get_color(color.value))
+                standard_screen.refresh()
+                time.sleep(0.02)
 
 
 def show_lines():
@@ -219,27 +252,28 @@ def show_lines():
 
 
 def setup_curses():
-    global standard_screen
-    global SCREEN_COLOR
-    global SHAPE_COLOR
-    global NEXT_SHAPE_COLOR
+    global SCREEN_ROWS
+    global SCREEN_COLS
     curses.noecho()
     curses.cbreak()
     standard_screen.keypad(True)
     standard_screen.nodelay(True)
     curses.curs_set(0)
+
+    SCREEN_ROWS, SCREEN_COLS = standard_screen.getmaxyx()
+
     if curses.has_colors():
         curses.start_color()
-        curses.init_pair(SCREEN_PAIR_COLORS, curses.COLOR_WHITE, curses.COLOR_BLACK)
-        curses.init_pair(CURRENT_SHAPE_PAIR_COLORS, curses.COLOR_RED, curses.COLOR_BLACK)
-        curses.init_pair(NEXT_SHAPE_PAIR_COLORS, curses.COLOR_CYAN, curses.COLOR_BLACK)
-        SCREEN_COLOR = curses.color_pair(SCREEN_PAIR_COLORS)
-        SHAPE_COLOR = curses.color_pair(CURRENT_SHAPE_PAIR_COLORS)
-        NEXT_SHAPE_COLOR = curses.color_pair(NEXT_SHAPE_PAIR_COLORS)
+        curses.init_pair(COLORS.S_COLOR.value, curses.COLOR_CYAN, curses.COLOR_BLACK)
+        curses.init_pair(COLORS.Z_COLOR.value, curses.COLOR_YELLOW, curses.COLOR_BLACK)
+        curses.init_pair(COLORS.L_COLOR.value, curses.COLOR_MAGENTA, curses.COLOR_BLACK)
+        curses.init_pair(COLORS.J_COLOR.value, curses.COLOR_YELLOW, curses.COLOR_BLACK)
+        curses.init_pair(COLORS.O_COLOR.value, curses.COLOR_BLUE, curses.COLOR_BLACK)
+        curses.init_pair(COLORS.T_COLOR.value, curses.COLOR_GREEN, curses.COLOR_BLACK)
+        curses.init_pair(COLORS.I_COLOR.value, curses.COLOR_RED, curses.COLOR_BLACK)
 
 
 def restore_terminal_config():
-    global standard_screen
     curses.nocbreak()
     standard_screen.keypad(False)
     curses.echo()
@@ -288,7 +322,7 @@ def main(screen):
                     rotated_shape_x -= 1
             for y, row in enumerate(rotated_shape):
                 for x, cell in enumerate(rotated_shape[y]):
-                    if screen[rotated_shape_y + y][rotated_shape_x + x] == 1:
+                    if screen[rotated_shape_y + y][rotated_shape_x + x] > 0:
                         break
                 else:
                     continue
@@ -302,7 +336,7 @@ def main(screen):
             for x, y in get_left_coords_for_collision(shape):
                 if shape_x + x == 0:
                     can_move_left = False
-                if screen[shape_y + y][shape_x + x - 1] == 1:
+                if screen[shape_y + y][shape_x + x - 1] > 0:
                     can_move_left = False
             if can_move_left:
                 shape_x -= 1
@@ -312,7 +346,7 @@ def main(screen):
             for x, y in get_right_coords_for_collision(shape):
                 if shape_x + x == max_x:
                     can_move_right = False
-                elif screen[shape_y + y][shape_x + x + 1] == 1:
+                elif screen[shape_y + y][shape_x + x + 1] > 0:
                     can_move_right = False
             if can_move_right:
                 shape_x += 1
@@ -331,12 +365,14 @@ def main(screen):
                 shape = next_shape
                 next_shape = get_new_shape()
                 shape_x, shape_y = INITIAL_COORDS
-                screen, removed_lines = remove_filled_rows(screen)
-                if removed_lines > 0 and FALL_EVERY_TIME > timedelta(microseconds=80000):
-                    FALL_EVERY_TIME = timedelta(microseconds=FALL_EVERY_TIME.microseconds * 0.95)
 
         virtual_screen = copy.deepcopy(screen)
         draw_virtual_screen(virtual_screen, shape, shape_x, shape_y, next_shape)
+        screen, removed_lines = remove_filled_rows(screen)
+        if removed_lines > 0:
+            last_fall_movement = datetime.now()
+            if FALL_EVERY_TIME > timedelta(microseconds=80000):
+                FALL_EVERY_TIME = timedelta(microseconds=FALL_EVERY_TIME.microseconds * 0.95)
         time.sleep(0.01)
 
 
