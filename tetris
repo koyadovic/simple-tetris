@@ -8,6 +8,7 @@ import curses
 import signal
 
 from datetime import datetime, timedelta
+from typing import Tuple
 from enum import Enum
 
 standard_screen = curses.initscr()
@@ -37,7 +38,6 @@ SHAPE_I = [
 ]
 
 SHAPE_T = [
-    [0, 0, 0],
     [1, 1, 1],
     [0, 1, 0],
 ]
@@ -155,36 +155,36 @@ def remove_filled_rows(screen):
 class Keyboard:
     def __init__(self):
         global standard_screen
-        self.ss = standard_screen
-        self.key = None
+        self._screen = standard_screen
+        self._key = None
 
     def refresh(self):
         try:
-            self.key = self.ss.getch()
+            self._key = self._screen.getch()
         except curses.error:
-            self.key = None
+            self._key = None
 
     def clear(self):
         while True:
-            key = self.ss.getch()
+            key = self._screen.getch()
             if key == -1:
                 break
 
     def is_left_pressed(self) -> bool:
-        return self.key == curses.KEY_LEFT
+        return self._key == curses.KEY_LEFT
 
     def is_right_pressed(self) -> bool:
-        return self.key == curses.KEY_RIGHT
+        return self._key == curses.KEY_RIGHT
 
     def is_down_pressed(self) -> bool:
-        return self.key == curses.KEY_DOWN
+        return self._key == curses.KEY_DOWN
 
     def is_action_pressed(self) -> bool:
-        return self.key == curses.KEY_UP
+        return self._key == curses.KEY_UP
 
     def is_exit_pressed(self) -> bool:
-        if self.key == 27:
-            if self.ss.getch() == -1:
+        if self._key == 27:
+            if self._screen.getch() == -1:
                 return True
         return False
 
@@ -196,7 +196,7 @@ def copy_shape_to_screen(shape, shape_x, shape_y, screen):
                 screen[y + shape_y][x + shape_x] = shape[y][x]
 
 
-def can_continue_shape_fall(shape, shape_x, shape_y, screen) -> bool:
+def can_shape_continue_to_fall_in_screen(screen, shape, shape_x, shape_y) -> bool:
     for bottom_x, bottom_y in get_bottom_coords_for_collision(shape):
         if shape_y + bottom_y == len(screen) - 1 or screen[shape_y + bottom_y + 1][shape_x + bottom_x] > 0:
             return False
@@ -211,7 +211,6 @@ def get_color(color: int):
 
 
 def draw_virtual_screen(virtual_screen, shape, shape_x, shape_y, next_shape):
-    global LINES
     global SCREEN_ROWS
     global SCREEN_COLS
 
@@ -240,14 +239,28 @@ def draw_virtual_screen(virtual_screen, shape, shape_x, shape_y, next_shape):
             standard_screen.addch(y + margin_top, -1 + margin_left, '┃')
             standard_screen.addch(y + margin_top, margin_left + width, '┃')
             for x, cell in enumerate(virtual_screen[y]):
-                standard_screen.addstr(y + margin_top, x * 2 + margin_left, SOLID * 2 if cell > 0 else '  ', *get_color(cell))
-        standard_screen.addstr(last_y + margin_top + 1, margin_left - 1, '┗' + ('━' * width) + '┛')
+                standard_screen.addstr(
+                    y + margin_top,
+                    x * 2 + margin_left,
+                    SOLID * 2 if cell > 0 else '  ',
+                    *get_color(cell)
+                )
+        standard_screen.addstr(
+            last_y + margin_top + 1,
+            margin_left - 1,
+            '┗' + ('━' * width) + '┛'
+        )
 
         # current shape
         for y, row in enumerate(shape):
             for x, cell in enumerate(shape[y]):
                 if cell > 0:
-                    standard_screen.addstr(y + shape_y + margin_top, (x + shape_x) * 2 + margin_left, SOLID * 2, *get_color(cell))
+                    standard_screen.addstr(
+                        y + shape_y + margin_top,
+                        (x + shape_x) * 2 + margin_left,
+                        SOLID * 2,
+                        *get_color(cell)
+                    )
 
         standard_screen.addstr(margin_top, margin_left - 13, f' LINES {LINES}')
 
@@ -256,7 +269,12 @@ def draw_virtual_screen(virtual_screen, shape, shape_x, shape_y, next_shape):
             for x in range(MAX_SHAPE_H * 2):
                 try:
                     cell = next_shape[y][x // 2]
-                    standard_screen.addch(y + margin_top + 2, width + margin_left + 5 + x, SOLID if cell > 0 else ' ', *get_color(cell))
+                    standard_screen.addch(
+                        y + margin_top + 2,
+                        width + margin_left + 5 + x,
+                        SOLID if cell > 0 else ' ',
+                        *get_color(cell)
+                    )
                 except IndexError:
                     standard_screen.addch(y + margin_top + 2, width + margin_left + 5 + x, ' ')
 
@@ -264,11 +282,120 @@ def draw_virtual_screen(virtual_screen, shape, shape_x, shape_y, next_shape):
         if len(completed_rows) > 0:
             for color in COLORS:
                 for completed_y in completed_rows:
-                    standard_screen.addstr(completed_y + margin_top, 0 + margin_left, SEMISOLID * width, *get_color(color.value))
+                    standard_screen.addstr(
+                        completed_y + margin_top,
+                        0 + margin_left,
+                        SEMISOLID * width,
+                        *get_color(color.value)
+                    )
                 standard_screen.refresh()
                 time.sleep(0.03)
     except curses.error:
         standard_screen.addstr(0, 0, 'There is not enough space to draw')
+
+
+def can_shape_move_left_in_screen(screen, shape, shape_x, shape_y) -> bool:
+    for x, y in get_left_coords_for_collision(shape):
+        if shape_x + x == 0:
+            return False
+        if screen[shape_y + y][shape_x + x - 1] > 0:
+            return False
+    return True
+
+
+def can_shape_move_right_in_screen(screen, shape, shape_x, shape_y) -> bool:
+    max_x = len(screen[0]) - 1
+    for x, y in get_right_coords_for_collision(shape):
+        if shape_x + x == max_x:
+            return False
+        elif screen[shape_y + y][shape_x + x + 1] > 0:
+            return False
+    return True
+
+
+def rotate_shape_in_screen(screen, shape, shape_x, shape_y) -> Tuple:
+    max_x = len(screen[0]) - 1
+    rotated_shape = rotate_shape(shape)
+    rotated_shape_x, rotated_shape_y = shape_x, shape_y
+    for x, y in get_left_coords_for_collision(rotated_shape):
+        while rotated_shape_x + x < 0:
+            rotated_shape_x += 1
+    for x, y in get_right_coords_for_collision(rotated_shape):
+        while rotated_shape_x + x > max_x:
+            rotated_shape_x -= 1
+    for y, row in enumerate(rotated_shape):
+        for x, cell in enumerate(rotated_shape[y]):
+            if screen[rotated_shape_y + y][rotated_shape_x + x] > 0:
+                break
+        else:
+            continue
+        break
+    else:
+        shape = rotated_shape
+        shape_x = rotated_shape_x
+    return shape, shape_x, shape_y
+
+
+def main(screen):
+    global FALL_EVERY_TIME
+
+    keyboard = Keyboard()
+    shape = get_new_shape()
+    next_shape = get_new_shape()
+    last_fall_movement = datetime.now()
+    shape_x, shape_y = INITIAL_COORDS
+
+    while True:
+        keyboard.refresh()
+
+        if keyboard.is_exit_pressed():
+            restore_terminal_config()
+            show_lines()
+            sys.exit(0)
+
+        if keyboard.is_action_pressed():
+            shape, shape_x, shape_y = rotate_shape_in_screen(screen, shape, shape_x, shape_y)
+
+        if keyboard.is_left_pressed() and can_shape_move_left_in_screen(screen, shape, shape_x, shape_y):
+            shape_x -= 1
+
+        elif keyboard.is_right_pressed() and can_shape_move_right_in_screen(screen, shape, shape_x, shape_y):
+            shape_x += 1
+
+        floor_reached = False
+        if keyboard.is_down_pressed() or datetime.now() - last_fall_movement > FALL_EVERY_TIME:
+            last_fall_movement = datetime.now()
+            if can_shape_continue_to_fall_in_screen(screen, shape, shape_x, shape_y):
+                shape_y += 1
+            else:
+                if shape_y == 0:
+                    restore_terminal_config()
+                    show_lines()
+                    sys.exit(0)
+
+                floor_reached = True
+                copy_shape_to_screen(shape, shape_x, shape_y, screen)
+                shape = next_shape
+                next_shape = get_new_shape()
+                shape_x, shape_y = INITIAL_COORDS
+
+        virtual_screen = copy.deepcopy(screen)
+        draw_virtual_screen(virtual_screen, shape, shape_x, shape_y, next_shape)
+
+        removed_lines = 0
+        if floor_reached:
+            screen, removed_lines = remove_filled_rows(screen)
+
+        if removed_lines > 0:
+            if FALL_EVERY_TIME >= timedelta(microseconds=60000):
+                FALL_EVERY_TIME = timedelta(microseconds=FALL_EVERY_TIME.microseconds * 0.95)
+            keyboard.clear()
+
+        elif floor_reached:
+            time.sleep(0.05)
+            keyboard.clear()
+
+        time.sleep(0.01)
 
 
 def show_lines():
@@ -310,106 +437,14 @@ def interrupt_handler(sig, frame):
     sys.exit(0)
 
 
-def main(screen):
-    global LINES
-    global FALL_EVERY_TIME
-
-    keyboard = Keyboard()
-
+if __name__ == '__main__':
     setup_curses()
     signal.signal(signal.SIGINT, interrupt_handler)
 
-    shape = get_new_shape()
-    next_shape = get_new_shape()
-    max_x = len(screen[0]) - 1
-
-    last_fall_movement = datetime.now()
-
-    shape_x, shape_y = INITIAL_COORDS
-    while True:
-        keyboard.refresh()
-
-        if keyboard.is_exit_pressed():
-            restore_terminal_config()
-            show_lines()
-            sys.exit(0)
-
-        if keyboard.is_action_pressed():
-            rotated_shape = rotate_shape(shape)
-            rotated_shape_x, rotated_shape_y = shape_x, shape_y
-            for x, y in get_left_coords_for_collision(rotated_shape):
-                while rotated_shape_x + x < 0:
-                    rotated_shape_x += 1
-            for x, y in get_right_coords_for_collision(rotated_shape):
-                while rotated_shape_x + x > max_x:
-                    rotated_shape_x -= 1
-            for y, row in enumerate(rotated_shape):
-                for x, cell in enumerate(rotated_shape[y]):
-                    if screen[rotated_shape_y + y][rotated_shape_x + x] > 0:
-                        break
-                else:
-                    continue
-                break
-            else:
-                shape = rotated_shape
-                shape_x = rotated_shape_x
-
-        if keyboard.is_left_pressed():
-            can_move_left = True
-            for x, y in get_left_coords_for_collision(shape):
-                if shape_x + x == 0:
-                    can_move_left = False
-                if screen[shape_y + y][shape_x + x - 1] > 0:
-                    can_move_left = False
-            if can_move_left:
-                shape_x -= 1
-
-        elif keyboard.is_right_pressed():
-            can_move_right = True
-            for x, y in get_right_coords_for_collision(shape):
-                if shape_x + x == max_x:
-                    can_move_right = False
-                elif screen[shape_y + y][shape_x + x + 1] > 0:
-                    can_move_right = False
-            if can_move_right:
-                shape_x += 1
-
-        floor_reached = False
-        if keyboard.is_down_pressed() or datetime.now() - last_fall_movement > FALL_EVERY_TIME:
-            last_fall_movement = datetime.now()
-            if can_continue_shape_fall(shape, shape_x, shape_y, screen):
-                shape_y += 1
-            else:
-                if shape_y == 0:
-                    restore_terminal_config()
-                    show_lines()
-                    sys.exit(0)
-
-                floor_reached = True
-                copy_shape_to_screen(shape, shape_x, shape_y, screen)
-                shape = next_shape
-                next_shape = get_new_shape()
-                shape_x, shape_y = INITIAL_COORDS
-
-        virtual_screen = copy.deepcopy(screen)
-        draw_virtual_screen(virtual_screen, shape, shape_x, shape_y, next_shape)
-        screen, removed_lines = remove_filled_rows(screen)
-
-        if removed_lines > 0:
-            if FALL_EVERY_TIME >= timedelta(microseconds=60000):
-                FALL_EVERY_TIME = timedelta(microseconds=FALL_EVERY_TIME.microseconds * 0.95)
-            keyboard.clear()
-
-        elif floor_reached:
-            time.sleep(0.05)
-            keyboard.clear()
-
-        time.sleep(0.01)
-
-
-if __name__ == '__main__':
     try:
         main(SCREEN)
-    except Exception:
+
+    except Exception as e:
         restore_terminal_config()
-        raise
+        show_lines()
+        raise e
