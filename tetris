@@ -330,8 +330,13 @@ def rotate_shape_in_screen(screen, shape, shape_x, shape_y) -> Tuple:
         while rotated_shape_x + x > max_x:
             rotated_shape_x -= 1
     for y, row in enumerate(rotated_shape):
+        if rotated_shape_y + y > HEIGHT:
+            break
         for x, cell in enumerate(rotated_shape[y]):
-            if screen[rotated_shape_y + y][rotated_shape_x + x] > 0:
+            try:
+                if screen[rotated_shape_y + y][rotated_shape_x + x] > 0:
+                    break
+            except IndexError:
                 break
         else:
             continue
